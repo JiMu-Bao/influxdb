@@ -574,7 +574,6 @@ c,tag2=e humidity=65i,temperature=4.0 41`),
 			wantStr := pointsToStr(tc.want.result.Points)
 
 			if !cmp.Equal(gotStr, wantStr) {
-
 				t.Errorf("got other than expected %s", cmp.Diff(gotStr, wantStr))
 			}
 		})
@@ -616,15 +615,10 @@ func pointsToStr(points []models.Point) string {
 }
 
 func mockPoints(org, bucket platform.ID, pointdata string) []models.Point {
-	points, err := models.ParsePoints([]byte(pointdata))
+	name := tsdb.EncodeName(org, bucket)
+	points, err := models.ParsePoints([]byte(pointdata), name[:])
 	if err != nil {
 		return nil
 	}
-
-	exploded, err := tsdb.ExplodePoints(org, bucket, points)
-	if err != nil {
-		return nil
-	}
-
-	return exploded
+	return points
 }

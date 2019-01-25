@@ -110,9 +110,9 @@ func TestIndex_SeriesIDSet(t *testing.T) {
 /// series
 func TestEngine_DeleteSeries(t *testing.T) {
 	// Create a few points.
-	p1 := MustParsePointString("cpu,host=A value=1.1 1000000000")
-	p2 := MustParsePointString("cpu,host=B value=1.2 2000000000")
-	p3 := MustParsePointString("cpu,host=A sum=1.3 3000000000")
+	p1 := MustParsePointString("cpu,host=A value=1.1 1000000000", "mm")
+	p2 := MustParsePointString("cpu,host=B value=1.2 2000000000", "mm")
+	p3 := MustParsePointString("cpu,host=A value=1.3 3000000000", "mm")
 
 	e, err := NewEngine()
 	if err != nil {
@@ -134,11 +134,11 @@ func TestEngine_DeleteSeries(t *testing.T) {
 	}
 
 	keys := e.FileStore.Keys()
-	if exp, got := 3, len(keys); exp != got {
+	if exp, got := 2, len(keys); exp != got {
 		t.Fatalf("series count mismatch: exp %v, got %v", exp, got)
 	}
 
-	itr := &seriesIterator{keys: [][]byte{[]byte("cpu,host=A")}}
+	itr := &seriesIterator{keys: [][]byte{[]byte("mm,_f=value,_m=cpu,host=A")}}
 	if err := e.DeleteSeriesRange(itr, math.MinInt64, math.MaxInt64); err != nil {
 		t.Fatalf("failed to delete series: %v", err)
 	}
@@ -148,7 +148,7 @@ func TestEngine_DeleteSeries(t *testing.T) {
 		t.Fatalf("series count mismatch: exp %v, got %v", exp, got)
 	}
 
-	exp := "cpu,host=B#!~#value"
+	exp := "mm,_f=value,_m=cpu,host=B#!~#value"
 	if _, ok := keys[exp]; !ok {
 		t.Fatalf("wrong series deleted: exp %v, got %v", exp, keys)
 	}
@@ -156,14 +156,14 @@ func TestEngine_DeleteSeries(t *testing.T) {
 
 func TestEngine_DeleteSeriesRange(t *testing.T) {
 	// Create a few points.
-	p1 := MustParsePointString("cpu,host=0 value=1.1 6000000000") // Should not be deleted
-	p2 := MustParsePointString("cpu,host=A value=1.2 2000000000")
-	p3 := MustParsePointString("cpu,host=A value=1.3 3000000000")
-	p4 := MustParsePointString("cpu,host=B value=1.3 4000000000") // Should not be deleted
-	p5 := MustParsePointString("cpu,host=B value=1.3 5000000000") // Should not be deleted
-	p6 := MustParsePointString("cpu,host=C value=1.3 1000000000")
-	p7 := MustParsePointString("mem,host=C value=1.3 1000000000")  // Should not be deleted
-	p8 := MustParsePointString("disk,host=C value=1.3 1000000000") // Should not be deleted
+	p1 := MustParsePointString("cpu,host=0 value=1.1 6000000000", "mm0") // Should not be deleted
+	p2 := MustParsePointString("cpu,host=A value=1.2 2000000000", "mm0")
+	p3 := MustParsePointString("cpu,host=A value=1.3 3000000000", "mm0")
+	p4 := MustParsePointString("cpu,host=B value=1.3 4000000000", "mm0") // Should not be deleted
+	p5 := MustParsePointString("cpu,host=B value=1.3 5000000000", "mm0") // Should not be deleted
+	p6 := MustParsePointString("cpu,host=C value=1.3 1000000000", "mm0")
+	p7 := MustParsePointString("mem,host=C value=1.3 1000000000", "mm1")  // Should not be deleted
+	p8 := MustParsePointString("disk,host=C value=1.3 1000000000", "mm2") // Should not be deleted
 
 	e, err := NewEngine()
 	if err != nil {
@@ -190,7 +190,7 @@ func TestEngine_DeleteSeriesRange(t *testing.T) {
 		t.Fatalf("series count mismatch: exp %v, got %v", exp, got)
 	}
 
-	itr := &seriesIterator{keys: [][]byte{[]byte("cpu,host=0"), []byte("cpu,host=A"), []byte("cpu,host=B"), []byte("cpu,host=C")}}
+	itr := &seriesIterator{keys: [][]byte{[]byte("mm0,_f=value,_m=cpu,host=0"), []byte("mm0,_f=value,_m=cpu,host=A"), []byte("mm0,_f=value,_m=cpu,host=B"), []byte("mm0,_f=value,_m=cpu,host=C")}}
 	if err := e.DeleteSeriesRange(itr, 0, 3000000000); err != nil {
 		t.Fatalf("failed to delete series: %v", err)
 	}
@@ -200,13 +200,13 @@ func TestEngine_DeleteSeriesRange(t *testing.T) {
 		t.Fatalf("series count mismatch: exp %v, got %v", exp, got)
 	}
 
-	exp := "cpu,host=B#!~#value"
+	exp := "mm0,_f=value,_m=cpu,host=B#!~#value"
 	if _, ok := keys[exp]; !ok {
 		t.Fatalf("wrong series deleted: exp %v, got %v", exp, keys)
 	}
 
 	// Check that the series still exists in the index
-	iter, err := e.index.MeasurementSeriesIDIterator([]byte("cpu"))
+	iter, err := e.index.MeasurementSeriesIDIterator([]byte("mm0"))
 	if err != nil {
 		t.Fatalf("iterator error: %v", err)
 	}
@@ -222,22 +222,22 @@ func TestEngine_DeleteSeriesRange(t *testing.T) {
 
 	// Lookup series.
 	name, tags := e.sfile.Series(elem.SeriesID)
-	if got, exp := name, []byte("cpu"); !bytes.Equal(got, exp) {
+	if got, exp := name, []byte("mm0"); !bytes.Equal(got, exp) {
 		t.Fatalf("series mismatch: got %s, exp %s", got, exp)
 	}
 
-	if !tags.Equal(models.NewTags(map[string]string{"host": "0"})) && !tags.Equal(models.NewTags(map[string]string{"host": "B"})) {
+	if !tags.Equal(models.NewTags(map[string]string{"_f": "value", "_m": "cpu", "host": "0"})) && !tags.Equal(models.NewTags(map[string]string{"host": "B"})) {
 		t.Fatalf(`series mismatch: got %s, exp either "host=0" or "host=B"`, tags)
 	}
 	iter.Close()
 
 	// Deleting remaining series should remove them from the series.
-	itr = &seriesIterator{keys: [][]byte{[]byte("cpu,host=0"), []byte("cpu,host=B")}}
+	itr = &seriesIterator{keys: [][]byte{[]byte("mm0,_f=value,_m=cpu,host=0"), []byte("mm0,_f=value,_m=cpu,host=B")}}
 	if err := e.DeleteSeriesRange(itr, 0, 9000000000); err != nil {
 		t.Fatalf("failed to delete series: %v", err)
 	}
 
-	if iter, err = e.index.MeasurementSeriesIDIterator([]byte("cpu")); err != nil {
+	if iter, err = e.index.MeasurementSeriesIDIterator([]byte("mm0")); err != nil {
 		t.Fatalf("iterator error: %v", err)
 	}
 	if iter == nil {
@@ -255,14 +255,14 @@ func TestEngine_DeleteSeriesRange(t *testing.T) {
 
 func TestEngine_DeleteSeriesRangeWithPredicate(t *testing.T) {
 	// Create a few points.
-	p1 := MustParsePointString("cpu,host=A value=1.1 6000000000") // Should not be deleted
-	p2 := MustParsePointString("cpu,host=A value=1.2 2000000000") // Should not be deleted
-	p3 := MustParsePointString("cpu,host=B value=1.3 3000000000")
-	p4 := MustParsePointString("cpu,host=B value=1.3 4000000000")
-	p5 := MustParsePointString("cpu,host=C value=1.3 5000000000") // Should not be deleted
-	p6 := MustParsePointString("mem,host=B value=1.3 1000000000")
-	p7 := MustParsePointString("mem,host=C value=1.3 1000000000")
-	p8 := MustParsePointString("disk,host=C value=1.3 1000000000") // Should not be deleted
+	p1 := MustParsePointString("cpu,host=A value=1.1 6000000000", "mm0") // Should not be deleted
+	p2 := MustParsePointString("cpu,host=A value=1.2 2000000000", "mm0") // Should not be deleted
+	p3 := MustParsePointString("cpu,host=B value=1.3 3000000000", "mm0")
+	p4 := MustParsePointString("cpu,host=B value=1.3 4000000000", "mm0")
+	p5 := MustParsePointString("cpu,host=C value=1.3 5000000000", "mm0") // Should not be deleted
+	p6 := MustParsePointString("mem,host=B value=1.3 1000000000", "mm1")
+	p7 := MustParsePointString("mem,host=C value=1.3 1000000000", "mm1")
+	p8 := MustParsePointString("disk,host=C value=1.3 1000000000", "mm2") // Should not be deleted
 
 	e, err := NewEngine()
 	if err != nil {
@@ -289,12 +289,12 @@ func TestEngine_DeleteSeriesRangeWithPredicate(t *testing.T) {
 		t.Fatalf("series count mismatch: exp %v, got %v", exp, got)
 	}
 
-	itr := &seriesIterator{keys: [][]byte{[]byte("cpu,host=A"), []byte("cpu,host=B"), []byte("cpu,host=C"), []byte("mem,host=B"), []byte("mem,host=C")}}
+	itr := &seriesIterator{keys: [][]byte{[]byte("mm0,_f=value,_m=cpu,host=A"), []byte("mm0,_f=value,_m=cpu,host=B"), []byte("mm0,_f=value,_m=cpu,host=C"), []byte("mm1,_f=value,_m=mem,host=B"), []byte("mm1,_f=value,_m=mem,host=C")}}
 	predicate := func(name []byte, tags models.Tags) (int64, int64, bool) {
-		if bytes.Equal(name, []byte("mem")) {
+		if bytes.Equal(name, []byte("mm1")) {
 			return math.MinInt64, math.MaxInt64, true
 		}
-		if bytes.Equal(name, []byte("cpu")) {
+		if bytes.Equal(name, []byte("mm0")) {
 			for _, tag := range tags {
 				if bytes.Equal(tag.Key, []byte("host")) && bytes.Equal(tag.Value, []byte("B")) {
 					return math.MinInt64, math.MaxInt64, true
@@ -312,7 +312,7 @@ func TestEngine_DeleteSeriesRangeWithPredicate(t *testing.T) {
 		t.Fatalf("series count mismatch: exp %v, got %v", exp, got)
 	}
 
-	exps := []string{"cpu,host=A#!~#value", "cpu,host=C#!~#value", "disk,host=C#!~#value"}
+	exps := []string{"mm0,_f=value,_m=cpu,host=A#!~#value", "mm0,_f=value,_m=cpu,host=C#!~#value", "mm2,_f=value,_m=disk,host=C#!~#value"}
 	for _, exp := range exps {
 		if _, ok := keys[exp]; !ok {
 			t.Fatalf("wrong series deleted: exp %v, got %v", exps, keys)
@@ -320,7 +320,7 @@ func TestEngine_DeleteSeriesRangeWithPredicate(t *testing.T) {
 	}
 
 	// Check that the series still exists in the index
-	iter, err := e.index.MeasurementSeriesIDIterator([]byte("cpu"))
+	iter, err := e.index.MeasurementSeriesIDIterator([]byte("mm0"))
 	if err != nil {
 		t.Fatalf("iterator error: %v", err)
 	}
@@ -336,22 +336,22 @@ func TestEngine_DeleteSeriesRangeWithPredicate(t *testing.T) {
 
 	// Lookup series.
 	name, tags := e.sfile.Series(elem.SeriesID)
-	if got, exp := name, []byte("cpu"); !bytes.Equal(got, exp) {
+	if got, exp := name, []byte("mm0"); !bytes.Equal(got, exp) {
 		t.Fatalf("series mismatch: got %s, exp %s", got, exp)
 	}
 
-	if !tags.Equal(models.NewTags(map[string]string{"host": "A"})) && !tags.Equal(models.NewTags(map[string]string{"host": "C"})) {
+	if !tags.Equal(models.NewTags(map[string]string{"_f": "value", "_m": "cpu", "host": "A"})) && !tags.Equal(models.NewTags(map[string]string{"_f": "value", "_m": "cpu", "host": "C"})) {
 		t.Fatalf(`series mismatch: got %s, exp either "host=A" or "host=C"`, tags)
 	}
 	iter.Close()
 
 	// Deleting remaining series should remove them from the series.
-	itr = &seriesIterator{keys: [][]byte{[]byte("cpu,host=A"), []byte("cpu,host=C")}}
+	itr = &seriesIterator{keys: [][]byte{[]byte("mm0,_f=value,_m=cpu,host=A"), []byte("mm0,_f=value,_m=cpu,host=C")}}
 	if err := e.DeleteSeriesRange(itr, 0, 9000000000); err != nil {
 		t.Fatalf("failed to delete series: %v", err)
 	}
 
-	if iter, err = e.index.MeasurementSeriesIDIterator([]byte("cpu")); err != nil {
+	if iter, err = e.index.MeasurementSeriesIDIterator([]byte("mm0")); err != nil {
 		t.Fatalf("iterator error: %v", err)
 	}
 	if iter == nil {
@@ -370,14 +370,14 @@ func TestEngine_DeleteSeriesRangeWithPredicate(t *testing.T) {
 // Tests that a nil predicate deletes all values returned from the series iterator.
 func TestEngine_DeleteSeriesRangeWithPredicate_Nil(t *testing.T) {
 	// Create a few points.
-	p1 := MustParsePointString("cpu,host=A value=1.1 6000000000") // Should not be deleted
-	p2 := MustParsePointString("cpu,host=A value=1.2 2000000000") // Should not be deleted
-	p3 := MustParsePointString("cpu,host=B value=1.3 3000000000")
-	p4 := MustParsePointString("cpu,host=B value=1.3 4000000000")
-	p5 := MustParsePointString("cpu,host=C value=1.3 5000000000") // Should not be deleted
-	p6 := MustParsePointString("mem,host=B value=1.3 1000000000")
-	p7 := MustParsePointString("mem,host=C value=1.3 1000000000")
-	p8 := MustParsePointString("disk,host=C value=1.3 1000000000") // Should not be deleted
+	p1 := MustParsePointString("cpu,host=A value=1.1 6000000000", "mm0") // Should not be deleted
+	p2 := MustParsePointString("cpu,host=A value=1.2 2000000000", "mm0") // Should not be deleted
+	p3 := MustParsePointString("cpu,host=B value=1.3 3000000000", "mm0")
+	p4 := MustParsePointString("cpu,host=B value=1.3 4000000000", "mm0")
+	p5 := MustParsePointString("cpu,host=C value=1.3 5000000000", "mm0") // Should not be deleted
+	p6 := MustParsePointString("mem,host=B value=1.3 1000000000", "mm1")
+	p7 := MustParsePointString("mem,host=C value=1.3 1000000000", "mm1")
+	p8 := MustParsePointString("disk,host=C value=1.3 1000000000", "mm2") // Should not be deleted
 
 	e, err := NewEngine()
 	if err != nil {
@@ -404,7 +404,7 @@ func TestEngine_DeleteSeriesRangeWithPredicate_Nil(t *testing.T) {
 		t.Fatalf("series count mismatch: exp %v, got %v", exp, got)
 	}
 
-	itr := &seriesIterator{keys: [][]byte{[]byte("cpu,host=A"), []byte("cpu,host=B"), []byte("cpu,host=C"), []byte("mem,host=B"), []byte("mem,host=C")}}
+	itr := &seriesIterator{keys: [][]byte{[]byte("mm0,_f=value,_m=cpu,host=A"), []byte("mm0,_f=value,_m=cpu,host=B"), []byte("mm0,_f=value,_m=cpu,host=C"), []byte("mm1,_f=value,_m=mem,host=B"), []byte("mm1,_f=value,_m=mem,host=C")}}
 	if err := e.DeleteSeriesRangeWithPredicate(itr, nil); err != nil {
 		t.Fatalf("failed to delete series: %v", err)
 	}
@@ -415,7 +415,7 @@ func TestEngine_DeleteSeriesRangeWithPredicate_Nil(t *testing.T) {
 	}
 
 	// Check that the series still exists in the index
-	iter, err := e.index.MeasurementSeriesIDIterator([]byte("cpu"))
+	iter, err := e.index.MeasurementSeriesIDIterator([]byte("mm0"))
 	if err != nil {
 		t.Fatalf("iterator error: %v", err)
 	} else if iter == nil {
@@ -430,7 +430,7 @@ func TestEngine_DeleteSeriesRangeWithPredicate_Nil(t *testing.T) {
 	}
 
 	// Check that disk series still exists
-	iter, err = e.index.MeasurementSeriesIDIterator([]byte("disk"))
+	iter, err = e.index.MeasurementSeriesIDIterator([]byte("mm2"))
 	if err != nil {
 		t.Fatalf("iterator error: %v", err)
 	} else if iter == nil {
@@ -447,14 +447,14 @@ func TestEngine_DeleteSeriesRangeWithPredicate_Nil(t *testing.T) {
 
 func TestEngine_DeleteSeriesRangeWithPredicate_FlushBatch(t *testing.T) {
 	// Create a few points.
-	p1 := MustParsePointString("cpu,host=A value=1.1 6000000000") // Should not be deleted
-	p2 := MustParsePointString("cpu,host=A value=1.2 2000000000") // Should not be deleted
-	p3 := MustParsePointString("cpu,host=B value=1.3 3000000000")
-	p4 := MustParsePointString("cpu,host=B value=1.3 4000000000")
-	p5 := MustParsePointString("cpu,host=C value=1.3 5000000000") // Should not be deleted
-	p6 := MustParsePointString("mem,host=B value=1.3 1000000000")
-	p7 := MustParsePointString("mem,host=C value=1.3 1000000000")
-	p8 := MustParsePointString("disk,host=C value=1.3 1000000000") // Should not be deleted
+	p1 := MustParsePointString("cpu,host=A value=1.1 6000000000", "mm0") // Should not be deleted
+	p2 := MustParsePointString("cpu,host=A value=1.2 2000000000", "mm0") // Should not be deleted
+	p3 := MustParsePointString("cpu,host=B value=1.3 3000000000", "mm0")
+	p4 := MustParsePointString("cpu,host=B value=1.3 4000000000", "mm0")
+	p5 := MustParsePointString("cpu,host=C value=1.3 5000000000", "mm0") // Should not be deleted
+	p6 := MustParsePointString("mem,host=B value=1.3 1000000000", "mm1")
+	p7 := MustParsePointString("mem,host=C value=1.3 1000000000", "mm1")
+	p8 := MustParsePointString("disk,host=C value=1.3 1000000000", "mm2") // Should not be deleted
 
 	e, err := NewEngine()
 	if err != nil {
@@ -481,13 +481,13 @@ func TestEngine_DeleteSeriesRangeWithPredicate_FlushBatch(t *testing.T) {
 		t.Fatalf("series count mismatch: exp %v, got %v", exp, got)
 	}
 
-	itr := &seriesIterator{keys: [][]byte{[]byte("cpu,host=A"), []byte("cpu,host=B"), []byte("cpu,host=C"), []byte("mem,host=B"), []byte("mem,host=C")}}
+	itr := &seriesIterator{keys: [][]byte{[]byte("mm0,_f=value,_m=cpu,host=A"), []byte("mm0,_f=value,_m=cpu,host=B"), []byte("mm0,_f=value,_m=cpu,host=C"), []byte("mm1,_f=value,_m=mem,host=B"), []byte("mm1,_f=value,_m=mem,host=C")}}
 	predicate := func(name []byte, tags models.Tags) (int64, int64, bool) {
-		if bytes.Equal(name, []byte("mem")) {
+		if bytes.Equal(name, []byte("mm1")) {
 			return 1000000000, 1000000000, true
 		}
 
-		if bytes.Equal(name, []byte("cpu")) {
+		if bytes.Equal(name, []byte("mm0")) {
 			for _, tag := range tags {
 				if bytes.Equal(tag.Key, []byte("host")) && bytes.Equal(tag.Value, []byte("B")) {
 					return 3000000000, 4000000000, true
@@ -505,7 +505,7 @@ func TestEngine_DeleteSeriesRangeWithPredicate_FlushBatch(t *testing.T) {
 		t.Fatalf("series count mismatch: exp %v, got %v", exp, got)
 	}
 
-	exps := []string{"cpu,host=A#!~#value", "cpu,host=C#!~#value", "disk,host=C#!~#value"}
+	exps := []string{"mm0,_f=value,_m=cpu,host=A#!~#value", "mm0,_f=value,_m=cpu,host=C#!~#value", "mm2,_f=value,_m=disk,host=C#!~#value"}
 	for _, exp := range exps {
 		if _, ok := keys[exp]; !ok {
 			t.Fatalf("wrong series deleted: exp %v, got %v", exps, keys)
@@ -513,7 +513,7 @@ func TestEngine_DeleteSeriesRangeWithPredicate_FlushBatch(t *testing.T) {
 	}
 
 	// Check that the series still exists in the index
-	iter, err := e.index.MeasurementSeriesIDIterator([]byte("cpu"))
+	iter, err := e.index.MeasurementSeriesIDIterator([]byte("mm0"))
 	if err != nil {
 		t.Fatalf("iterator error: %v", err)
 	}
@@ -529,22 +529,22 @@ func TestEngine_DeleteSeriesRangeWithPredicate_FlushBatch(t *testing.T) {
 
 	// Lookup series.
 	name, tags := e.sfile.Series(elem.SeriesID)
-	if got, exp := name, []byte("cpu"); !bytes.Equal(got, exp) {
+	if got, exp := name, []byte("mm0"); !bytes.Equal(got, exp) {
 		t.Fatalf("series mismatch: got %s, exp %s", got, exp)
 	}
 
-	if !tags.Equal(models.NewTags(map[string]string{"host": "A"})) && !tags.Equal(models.NewTags(map[string]string{"host": "C"})) {
+	if !tags.Equal(models.NewTags(map[string]string{"_f": "value", "_m": "cpu", "host": "A"})) && !tags.Equal(models.NewTags(map[string]string{"_f": "value", "_m": "cpu", "host": "C"})) {
 		t.Fatalf(`series mismatch: got %s, exp either "host=A" or "host=C"`, tags)
 	}
 	iter.Close()
 
 	// Deleting remaining series should remove them from the series.
-	itr = &seriesIterator{keys: [][]byte{[]byte("cpu,host=A"), []byte("cpu,host=C")}}
+	itr = &seriesIterator{keys: [][]byte{[]byte("mm0,_f=value,_m=cpu,host=A"), []byte("mm0,_f=value,_m=cpu,host=C")}}
 	if err := e.DeleteSeriesRange(itr, 0, 9000000000); err != nil {
 		t.Fatalf("failed to delete series: %v", err)
 	}
 
-	if iter, err = e.index.MeasurementSeriesIDIterator([]byte("cpu")); err != nil {
+	if iter, err = e.index.MeasurementSeriesIDIterator([]byte("mm0")); err != nil {
 		t.Fatalf("iterator error: %v", err)
 	}
 	if iter == nil {
@@ -562,7 +562,7 @@ func TestEngine_DeleteSeriesRangeWithPredicate_FlushBatch(t *testing.T) {
 
 func TestEngine_DeleteSeriesRange_OutsideTime(t *testing.T) {
 	// Create a few points.
-	p1 := MustParsePointString("cpu,host=A value=1.1 1000000000") // Should not be deleted
+	p1 := MustParsePointString("cpu,host=A value=1.1 1000000000", "mm") // Should not be deleted
 
 	e, err := NewEngine()
 	if err != nil {
@@ -599,13 +599,13 @@ func TestEngine_DeleteSeriesRange_OutsideTime(t *testing.T) {
 		t.Fatalf("series count mismatch: exp %v, got %v", exp, got)
 	}
 
-	exp := "cpu,host=A#!~#value"
+	exp := "mm,_f=value,_m=cpu,host=A#!~#value"
 	if _, ok := keys[exp]; !ok {
 		t.Fatalf("wrong series deleted: exp %v, got %v", exp, keys)
 	}
 
 	// Check that the series still exists in the index
-	iter, err := e.index.MeasurementSeriesIDIterator([]byte("cpu"))
+	iter, err := e.index.MeasurementSeriesIDIterator([]byte("mm"))
 	if err != nil {
 		t.Fatalf("iterator error: %v", err)
 	}
@@ -621,11 +621,11 @@ func TestEngine_DeleteSeriesRange_OutsideTime(t *testing.T) {
 
 	// Lookup series.
 	name, tags := e.sfile.Series(elem.SeriesID)
-	if got, exp := name, []byte("cpu"); !bytes.Equal(got, exp) {
+	if got, exp := name, []byte("mm"); !bytes.Equal(got, exp) {
 		t.Fatalf("series mismatch: got %s, exp %s", got, exp)
 	}
 
-	if got, exp := tags, models.NewTags(map[string]string{"host": "A"}); !got.Equal(exp) {
+	if got, exp := tags, models.NewTags(map[string]string{"_f": "value", "_m": "cpu", "host": "A"}); !got.Equal(exp) {
 		t.Fatalf("series mismatch: got %s, exp %s", got, exp)
 	}
 }
@@ -636,9 +636,9 @@ func TestEngine_LastModified(t *testing.T) {
 	}
 
 	// Create a few points.
-	p1 := MustParsePointString("cpu,host=A value=1.1 1000000000")
-	p2 := MustParsePointString("cpu,host=B value=1.2 2000000000")
-	p3 := MustParsePointString("cpu,host=A sum=1.3 3000000000")
+	p1 := MustParsePointString("cpu,host=A value=1.1 1000000000", "mm")
+	p2 := MustParsePointString("cpu,host=B value=1.2 2000000000", "mm")
+	p3 := MustParsePointString("cpu,host=A sum=1.3 3000000000", "mm")
 
 	e, err := NewEngine()
 	if err != nil {
@@ -744,7 +744,7 @@ func TestEngine_ShouldCompactCache(t *testing.T) {
 		t.Fatal("nothing written to cache, so should not compact")
 	}
 
-	if err := e.WritePointsString("m,k=v f=3i"); err != nil {
+	if err := e.WritePointsString("mm", "m,k=v f=3i"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -828,7 +828,7 @@ func BenchmarkEngine_WritePoints(b *testing.B) {
 		e := MustOpenEngine()
 		pp := make([]models.Point, 0, sz)
 		for i := 0; i < sz; i++ {
-			p := MustParsePointString(fmt.Sprintf("cpu,host=%d value=1.2", i))
+			p := MustParsePointString(fmt.Sprintf("cpu,host=%d value=1.2", i), "mm")
 			pp = append(pp, p)
 		}
 
@@ -853,7 +853,7 @@ func BenchmarkEngine_WritePoints_Parallel(b *testing.B) {
 		cpus := runtime.GOMAXPROCS(0)
 		pp := make([]models.Point, 0, sz*cpus)
 		for i := 0; i < sz*cpus; i++ {
-			p := MustParsePointString(fmt.Sprintf("cpu,host=%d value=1.2,other=%di", i, i))
+			p := MustParsePointString(fmt.Sprintf("cpu,host=%d value=1.2,other=%di", i, i), "mm")
 			pp = append(pp, p)
 		}
 
@@ -1014,8 +1014,8 @@ func (e *Engine) AddSeries(name string, tags map[string]string) error {
 
 // WritePointsString calls WritePointsString on the underlying engine, but also
 // adds the associated series to the index.
-func (e *Engine) WritePointsString(ptstr ...string) error {
-	points, err := models.ParsePointsString(strings.Join(ptstr, "\n"))
+func (e *Engine) WritePointsString(mm string, ptstr ...string) error {
+	points, err := models.ParsePointsString(strings.Join(ptstr, "\n"), mm)
 	if err != nil {
 		return err
 	}
@@ -1088,8 +1088,8 @@ func (f *SeriesFile) Close() {
 }
 
 // MustParsePointsString parses points from a string. Panic on error.
-func MustParsePointsString(buf string) []models.Point {
-	a, err := models.ParsePointsString(buf)
+func MustParsePointsString(buf, mm string) []models.Point {
+	a, err := models.ParsePointsString(buf, mm)
 	if err != nil {
 		panic(err)
 	}
@@ -1097,7 +1097,7 @@ func MustParsePointsString(buf string) []models.Point {
 }
 
 // MustParsePointString parses the first point from a string. Panic on error.
-func MustParsePointString(buf string) models.Point { return MustParsePointsString(buf)[0] }
+func MustParsePointString(buf, mm string) models.Point { return MustParsePointsString(buf, mm)[0] }
 
 type mockPlanner struct{}
 
