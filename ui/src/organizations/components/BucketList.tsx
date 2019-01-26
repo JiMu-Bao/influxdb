@@ -1,6 +1,7 @@
 // Libraries
 import React, {PureComponent} from 'react'
 import {withRouter, WithRouterProps} from 'react-router'
+import {connect} from 'react-redux'
 import _ from 'lodash'
 
 // Components
@@ -8,17 +9,26 @@ import UpdateBucketOverlay from 'src/organizations/components/UpdateBucketOverla
 import BucketRow, {PrettyBucket} from 'src/organizations/components/BucketRow'
 import {OverlayTechnology, IndexList} from 'src/clockface'
 
+// Actions
+import {setBucketInfo} from 'src/dataLoaders/actions/steps'
+
 // Types
 import {OverlayState} from 'src/types/v2'
 import DataLoadersWizard from 'src/dataLoaders/components/DataLoadersWizard'
 import {Substep, DataLoaderStep, DataLoaderType} from 'src/types/v2/dataLoaders'
 
-interface Props {
+interface OwnProps {
   buckets: PrettyBucket[]
   emptyState: JSX.Element
   onUpdateBucket: (b: PrettyBucket) => Promise<void>
   onDeleteBucket: (b: PrettyBucket) => Promise<void>
 }
+
+interface DispatchProps {
+  onSetBucketInfo: typeof setBucketInfo
+}
+
+type Props = OwnProps & DispatchProps
 
 interface State {
   bucketID: string
@@ -102,12 +112,6 @@ class BucketList extends PureComponent<Props & WithRouterProps, State> {
     const {dataLoaderType} = this.state
 
     switch (dataLoaderType) {
-      case DataLoaderType.Streaming:
-        return {
-          startingType: DataLoaderType.Streaming,
-          startingStep: DataLoaderStep.Select,
-          startingSubstep: 'streaming',
-        }
       case DataLoaderType.Scraping:
         return {
           startingType: DataLoaderType.Scraping,
@@ -133,6 +137,13 @@ class BucketList extends PureComponent<Props & WithRouterProps, State> {
     bucket: PrettyBucket,
     dataLoaderType: DataLoaderType
   ) => {
+    this.props.onSetBucketInfo(
+      bucket.organization,
+      bucket.organizationID,
+      bucket.name,
+      bucket.id
+    )
+
     this.setState({
       bucketID: bucket.id,
       dataLoadersOverlayState: OverlayState.Open,
@@ -163,4 +174,11 @@ class BucketList extends PureComponent<Props & WithRouterProps, State> {
   }
 }
 
-export default withRouter<Props>(BucketList)
+const mdtp: DispatchProps = {
+  onSetBucketInfo: setBucketInfo,
+}
+
+export default connect<null, DispatchProps, OwnProps>(
+  null,
+  mdtp
+)(withRouter<Props>(BucketList))

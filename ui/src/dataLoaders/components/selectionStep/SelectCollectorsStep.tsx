@@ -1,20 +1,20 @@
 // Libraries
 import React, {PureComponent} from 'react'
+import {connect} from 'react-redux'
 import _ from 'lodash'
 
 // Components
 import {ErrorHandling} from 'src/shared/decorators/errors'
 import {ComponentStatus, Form} from 'src/clockface'
-import TypeSelector from 'src/dataLoaders/components/selectionStep/TypeSelector'
 import StreamingSelector from 'src/dataLoaders/components/selectionStep/StreamingSelector'
 import OnboardingButtons from 'src/onboarding/components/OnboardingButtons'
 import FancyScrollbar from 'src/shared/components/fancy_scrollbar/FancyScrollbar'
 
 // Actions
 import {
-  setActiveTelegrafPlugin,
   addPluginBundleWithPlugins,
   removePluginBundleWithPlugins,
+  setDataLoadersType,
 } from 'src/dataLoaders/actions/dataLoaders'
 import {setBucketInfo} from 'src/dataLoaders/actions/steps'
 
@@ -26,25 +26,33 @@ import {
   BundleName,
 } from 'src/types/v2/dataLoaders'
 import {Bucket} from 'src/api'
+import {AppState} from 'src/types/v2'
 
-export interface Props extends DataLoaderStepProps {
+export interface OwnProps extends DataLoaderStepProps {
+  pluginBundles: BundleName[]
+  type: DataLoaderType
+  buckets: Bucket[]
+}
+
+export interface StateProps {
   bucket: string
   telegrafPlugins: TelegrafPlugin[]
   pluginBundles: BundleName[]
-  type: DataLoaderType
+}
+
+export interface DispatchProps {
   onAddPluginBundle: typeof addPluginBundleWithPlugins
   onRemovePluginBundle: typeof removePluginBundleWithPlugins
-  onSetDataLoadersType: (type: DataLoaderType) => void
-  onSetActiveTelegrafPlugin: typeof setActiveTelegrafPlugin
+  onSetDataLoadersType: typeof setDataLoadersType
   onSetBucketInfo: typeof setBucketInfo
-  buckets: Bucket[]
-  selectedBucket: string
 }
+
+type Props = OwnProps & StateProps & DispatchProps
 
 @ErrorHandling
 export class SelectDataSourceStep extends PureComponent<Props> {
   public componentDidMount() {
-    if (this.isStreaming && this.props.type !== DataLoaderType.Streaming) {
+    if (this.props.type !== DataLoaderType.Streaming) {
       this.props.onSetDataLoadersType(DataLoaderType.Streaming)
     }
   }
@@ -60,7 +68,14 @@ export class SelectDataSourceStep extends PureComponent<Props> {
                 <h5 className="wizard-step--sub-title">
                   Telegraf collects and writes metrics to a bucket in InfluxDB.
                 </h5>
-                {this.selector}
+                <StreamingSelector
+                  pluginBundles={this.props.pluginBundles}
+                  telegrafPlugins={this.props.telegrafPlugins}
+                  onTogglePluginBundle={this.handleTogglePluginBundle}
+                  buckets={this.props.buckets}
+                  bucket={this.props.bucket}
+                  onSelectBucket={this.handleSelectBucket}
+                />
               </div>
             </FancyScrollbar>
           </div>
@@ -82,9 +97,7 @@ export class SelectDataSourceStep extends PureComponent<Props> {
 
     const isTypeEmpty = type === DataLoaderType.Empty
     const isStreamingWithoutPlugin =
-      type === DataLoaderType.Streaming &&
-      this.isStreaming &&
-      !telegrafPlugins.length
+      type === DataLoaderType.Streaming && !telegrafPlugins.length
 
     if (isTypeEmpty || isStreamingWithoutPlugin) {
       return ComponentStatus.Disabled
@@ -95,32 +108,7 @@ export class SelectDataSourceStep extends PureComponent<Props> {
 
   private get title(): string {
     const {bucket} = this.props
-    if (this.isStreaming) {
-      return `Select Telegraf Plugins to add to ${bucket || 'your bucket'}`
-    }
-    return `Select a Data Source to add to ${bucket || 'your bucket'}`
-  }
-
-  private get selector(): JSX.Element {
-    if (this.props.type === DataLoaderType.Streaming && this.isStreaming) {
-      return (
-        <StreamingSelector
-          pluginBundles={this.props.pluginBundles}
-          telegrafPlugins={this.props.telegrafPlugins}
-          onTogglePluginBundle={this.handleTogglePluginBundle}
-          buckets={this.props.buckets}
-          bucket={this.props.bucket}
-          selectedBucket={this.props.selectedBucket}
-          onSelectBucket={this.handleSelectBucket}
-        />
-      )
-    }
-    return (
-      <TypeSelector
-        onSelectDataLoaderType={this.handleSelectDataLoaderType}
-        type={this.props.type}
-      />
-    )
+    return `Select Telegraf Plugins to add to ${bucket || 'your bucket'}`
   }
 
   private handleSelectBucket = (bucket: Bucket) => {
@@ -130,33 +118,9 @@ export class SelectDataSourceStep extends PureComponent<Props> {
   }
 
   private handleClickNext = () => {
-    const {
-      currentStepIndex,
-      onSetActiveTelegrafPlugin,
-      onSetSubstepIndex,
-    } = this.props
+    const {currentStepIndex, onSetSubstepIndex} = this.props
 
-    const isTypeSelectionStep =
-      this.props.type === DataLoaderType.Streaming && !this.isStreaming
-    if (isTypeSelectionStep) {
-      onSetSubstepIndex(currentStepIndex, 'streaming')
-      onSetActiveTelegrafPlugin('')
-      return
-    }
-
-    if (this.isStreaming) {
-      onSetSubstepIndex(currentStepIndex + 1, 'config')
-      return
-    }
-
-    this.props.onIncrementCurrentStepIndex()
-  }
-
-  private handleSelectDataLoaderType = async (type: DataLoaderType) => {
-    await this.props.onSetDataLoadersType(type)
-    this.handleClickNext()
-
-    return
+    onSetSubstepIndex(currentStepIndex + 1, 'config')
   }
 
   private handleTogglePluginBundle = (
@@ -171,10 +135,27 @@ export class SelectDataSourceStep extends PureComponent<Props> {
 
     this.props.onAddPluginBundle(bundle)
   }
-
-  private get isStreaming(): boolean {
-    return this.props.substep === 'streaming'
-  }
 }
 
-export default SelectDataSourceStep
+const mstp = ({
+  dataLoading: {
+    dataLoaders: {telegrafPlugins, pluginBundles},
+    steps: {bucket},
+  },
+}: AppState): StateProps => ({
+  telegrafPlugins,
+  bucket,
+  pluginBundles,
+})
+
+const mdtp: DispatchProps = {
+  onSetDataLoadersType: setDataLoadersType,
+  onAddPluginBundle: addPluginBundleWithPlugins,
+  onRemovePluginBundle: removePluginBundleWithPlugins,
+  onSetBucketInfo: setBucketInfo,
+}
+
+export default connect<StateProps, DispatchProps, OwnProps>(
+  mstp,
+  mdtp
+)(SelectDataSourceStep)

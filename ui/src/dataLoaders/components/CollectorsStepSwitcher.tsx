@@ -3,6 +3,7 @@ import React, {PureComponent} from 'react'
 import _ from 'lodash'
 
 // Components
+import SelectCollectorsStep from 'src/dataLoaders/components/selectionStep/SelectCollectorsStep'
 import ConfigureDataSourceStep from 'src/dataLoaders/components/configureStep/ConfigureDataSourceStep'
 import VerifyDataStep from 'src/dataLoaders/components/verifyStep/VerifyDataStep'
 import {ErrorHandling} from 'src/shared/decorators/errors'
@@ -22,7 +23,7 @@ import {
 import {setBucketInfo} from 'src/dataLoaders/actions/steps'
 
 // Types
-import {DataLoadersState, DataLoaderStep} from 'src/types/v2/dataLoaders'
+import {DataLoadersState, CollectorsStep} from 'src/types/v2/dataLoaders'
 import {DataLoaderStepProps} from 'src/dataLoaders/components/DataLoadersWizard'
 import {Bucket} from 'src/api'
 
@@ -68,7 +69,11 @@ class StepSwitcher extends PureComponent<Props> {
     } = this.props
 
     switch (currentStepIndex) {
-      case DataLoaderStep.Configure:
+      case CollectorsStep.Select:
+        return (
+          <SelectCollectorsStep {...onboardingStepProps} buckets={buckets} />
+        )
+      case CollectorsStep.Configure:
         return (
           <ConfigureDataSourceStep
             {...onboardingStepProps}
@@ -85,7 +90,7 @@ class StepSwitcher extends PureComponent<Props> {
             onSetConfigArrayValue={onSetConfigArrayValue}
           />
         )
-      case DataLoaderStep.Verify:
+      case CollectorsStep.Verify:
         return (
           <VerifyDataStep
             {...onboardingStepProps}
